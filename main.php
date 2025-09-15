@@ -58,7 +58,7 @@ class apachemgr{
             return false;
         }
 
-        $proc = proc_open('httpd.exe', [], $pipes, realpath($info['root'] . '\\bin'));
+        $proc = proc_open('httpd.exe -D FOREGROUND', [], $pipes, realpath($info['root'] . '\\bin'));
 
         if(!is_resource($proc)){
             mklog(2, 'Failed to start httpd.exe process');
@@ -84,13 +84,18 @@ class apachemgr{
 
         $status = proc_get_status($proc);
 
-        if(!$status['command'] !== 'httpd.exe'){
+        if($status['command'] !== 'httpd.exe'){
             mklog(2, 'The passed proc resource was not for apache');
             return false;
         }
 
         if(!$status['running']){
             mklog(2, 'Cannot stop process that is already stopped');
+            return false;
+        }
+
+        if(!proc_terminate($proc)){
+            mklog(2, 'Failed to send terminate signal to apache server');
             return false;
         }
 
