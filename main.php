@@ -1,6 +1,6 @@
 <?php
 class apachemgr{
-    private static $procs = [];
+    private static $procs = [];//
 
     public static function newServer(string $documentRoot, string $name, string|false $serverRoot=false):int|false{
         if(!is_dir($documentRoot)){
