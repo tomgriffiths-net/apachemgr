@@ -31,6 +31,11 @@ class apachemgr{
             return false;
         }
 
+        if(!self::setConfDirective($serverRoot . '\\conf\\httpd.conf', 'Define PIPENAME', '"apachemgr_server_' . $serverNumber . '"')){
+            mklog(2, 'Failed to set pipe name for shutdown signal');
+            return false;
+        }
+
         if(!self::setServerDocRoot($serverRoot . '\\conf\\httpd.conf', realpath($documentRoot))){
             mklog(2, 'Failed to set document root');
             return false;
