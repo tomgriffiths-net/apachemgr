@@ -1,10 +1,11 @@
 {
     "id_name": "apachemgr",
     "name": "Apache Manager (Dev)",
-    "version": 1,
+    "version": 2,
     "author": "tom",
     "description": "",
     "dependencies": {
-        "settings": 2
+        "settings": 2,
+        "network": 1
     }
 }
