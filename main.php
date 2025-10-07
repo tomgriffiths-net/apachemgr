@@ -76,7 +76,7 @@ class apachemgr{
             return false;
         }
 
-        if(isset(self::$procs[$serverNumber])){
+        if(self::isRunning($serverNumber)){
             mklog(2, 'Apache server ' . $serverNumber . ' already has an open process');
             return false;
         }
@@ -101,8 +101,8 @@ class apachemgr{
         return isset(self::$procs[$serverNumber]) ? self::$procs[$serverNumber] : false;
     }
     public static function stop(int $serverNumber):int|false{
-        if(!isset(self::$procs[$serverNumber])){
-            mklog(2, 'Server number ' . $serverNumber . ' is not running or was not started by this php session');
+        if(!self::isRunning($serverNumber)){
+            mklog(2, 'Server number ' . $serverNumber . ' is not running or was not started by this process');
             return false;
         }
 
@@ -142,6 +142,17 @@ class apachemgr{
         unset(self::$procs[$serverNumber]);
 
         return $exit;
+    }
+    public static function isRunning(int $serverNumber, bool $deleteProcIfNotRunning=true):bool{
+        $proc = self::getServerProc($serverNumber);
+        if($proc){
+            $running = (bool) @proc_get_status($proc)['running'];
+            if(!$running && $deleteProcIfNotRunning){
+                unset(self::$procs[$serverNumber]);
+            }
+            return $running;
+        }
+        return false;
     }
 
     public static function setServerListen(string|int $identifier, string $listen):bool{
@@ -409,7 +420,7 @@ class apachemgr{
         return false;
     }
     private static function downloadApache(string $serverRoot):bool{
-        if(!downloader::downloadFile('https://files.tomgriffiths.net/php-cli/files/httpd-2.4.65-250724-Win64-VS17-CustomConfAndModuleV2.zip','temp/apachemgr/apache.zip')){
+        if(!downloader::downloadFile('https://files.tomgriffiths.net/php-cli/files/httpd-2.4.65-250724-Win64-VS17-CustomConfAndModuleV3.zip','temp/apachemgr/apache.zip')){
             mklog(2,'Failed to download apache with custom config');
             return false;
         }
