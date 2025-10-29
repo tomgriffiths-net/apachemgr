@@ -2,14 +2,8 @@
 class apachemgr{
     private static $procs = [];
 
+    //Server creation/deletion
     public static function newServer(string $documentRoot, string $name, string|false $serverRoot=false):int|false{
-        if(!is_dir($documentRoot)){
-            if(!mkdir($documentRoot, 0777, true)){
-                mklog(2,'Failed to create document directory');
-                return false;
-            }
-        }
-        
         $serverNumber = 1;
         while(settings::isset("servers/" . $serverNumber)){
             $serverNumber ++;
@@ -36,6 +30,10 @@ class apachemgr{
             return false;
         }
 
+        if(!files::ensureFolder($documentRoot)){
+            mklog(2,'Failed to create document root directory');
+            return false;
+        }
         if(!self::setServerDocRoot($serverRoot . '\\conf\\httpd.conf', realpath($documentRoot))){
             mklog(2, 'Failed to set document root');
             return false;
@@ -52,7 +50,30 @@ class apachemgr{
 
         return $serverNumber;
     }
+    public static function deleteServer(int $serverNumber, bool $deleteRoot=false):bool{
+        $info = settings::read('servers/' . $serverNumber);
+        if(!is_array($info) || !isset($info['root'])){
+            mklog(2, 'Unable to find server number ' . $serverNumber);
+            return false;
+        }
 
+        if(!settings::unset('servers/' . $serverNumber)){
+            mklog(2, 'Unable to delete information for server ' . $serverNumber);
+            return false;
+        }
+
+        if($deleteRoot){
+            exec('rmdir /s /q "' . str_replace("/", "\\", $info['root']) . '"', $output, $exitCode);
+
+            if($exitCode !== 0){
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    //Server management
     public static function start(int $serverNumber):bool{
         $info = settings::read('servers/' . $serverNumber);
         if(!is_array($info) || !isset($info['root'])){
@@ -155,6 +176,7 @@ class apachemgr{
         return false;
     }
 
+    //Server settings
     public static function setServerListen(string|int $identifier, string $listen):bool{
         if(!preg_match('/^[0-9.:]+$/', $listen)){
             return false;
@@ -190,25 +212,7 @@ class apachemgr{
             $identifier .= "\\conf\\httpd.conf";
         }
 
-        $lines = file($identifier);
-        if(!is_array($lines)){
-            mklog(2,'Failed to read config file ' . $identifier);
-            return false;
-        }
-
-        $lines = self::replaceLineBeginingWith($directive, $directive . " " . $value, $lines);
-
-        if(!is_array($lines)){
-            mklog(2,'Failed to set ' . $directive . ' directive in ' . $identifier);
-            return false;
-        }
-
-        if(!file_put_contents($identifier, $lines)){
-            mklog(2,'Failed to save config file ' . $identifier);
-            return false;
-        }
-
-        return true;
+        return txtrw::replaceLineBeginingWith($identifier, $directive, $directive . " " . $value, ['#']);
     }
     public static function setAutostart(int $serverNumber, bool $autostart):bool{
         if(!settings::isset('servers/' . $serverNumber)){
@@ -218,29 +222,6 @@ class apachemgr{
 
         return settings::set('servers/' . $serverNumber . '/autostart', $autostart, true);
     }
-    public static function deleteServer(int $serverNumber, bool $deleteRoot=false):bool{
-        $info = settings::read('servers/' . $serverNumber);
-        if(!is_array($info) || !isset($info['root'])){
-            mklog(2, 'Unable to find server number ' . $serverNumber);
-            return false;
-        }
-
-        if(!settings::unset('servers/' . $serverNumber)){
-            mklog(2, 'Unable to delete information for server ' . $serverNumber);
-            return false;
-        }
-
-        if($deleteRoot){
-            exec('rmdir /s /q "' . str_replace("/", "\\", $info['root']) . '"', $output, $exitCode);
-
-            if($exitCode !== 0){
-                return false;
-            }
-        }
-        
-        return true;
-    }
-
     public static function readConf(string|int $identifier):array|false{
         $return = [];
 
@@ -341,6 +322,8 @@ class apachemgr{
 
         return $return;
     }
+
+    //Server information
     public static function getServerRoot(int $serverNumber):string|false{
         $info = settings::read('servers/' . $serverNumber);
         if(!is_array($info) || !isset($info['root'])){
@@ -370,29 +353,11 @@ class apachemgr{
             return intval(trim(substr($line, 7)));
         }
     }
-    
-    private static function replaceLineBeginingWith(string $starting, string $replacement, array $lines):array|false{
-        $count = strlen($starting);
-        $somethingHappened = false;
-        foreach($lines as $index => $line){
-            $line = trim($line);
-            if(empty($line) || substr($line,0,1) === "#"){
-                continue;
-            }
-
-            if(substr($line,0,$count) === $starting){
-                $lines[$index] = $replacement . "\n";
-                $somethingHappened = true;
-                break;
-            }
-        }
-
-        if(!$somethingHappened){
-            return false;
-        }
-
-        return $lines;
+    public static function listServers():array|false{
+        return settings::read('servers');
     }
+    
+    //Private functions
     private static function getLineBeginingWith(string $starting, string $file, bool $ignoreCase=true):string|false{
         $lines = file($file);
         if(!is_array($lines)){
@@ -420,6 +385,16 @@ class apachemgr{
         return false;
     }
     private static function downloadApache(string $serverRoot):bool{
+        if(is_dir($serverRoot) || is_file($serverRoot)){
+            mklog(2, 'Unable to install apache where something already exists');
+            return false;
+        }
+
+        if(!files::mkFolder($serverRoot)){
+            mklog(2, 'Failed to create install directory');
+            return false;
+        }
+
         if(!downloader::downloadFile('https://files.tomgriffiths.net/php-cli/files/httpd-2.4.65-250724-Win64-VS17-CustomConfAndModuleV3.zip','temp/apachemgr/apache.zip')){
             mklog(2,'Failed to download apache with custom config');
             return false;
