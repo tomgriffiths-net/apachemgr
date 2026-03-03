@@ -1,8 +1,19 @@
 <?php
+/**
+ * Version 5 - A package for controlling apache servers.
+ */
 class apachemgr{
     private static $procs = [];
 
     //Server creation/deletion
+    /**
+     * Creates a new apache server.
+     *
+     * @param string $documentRoot The document root, where the server should serve files from.
+     * @param string $name The name of the server.
+     * @param string|boolean $serverRoot A string to a custom location to store the server binaries and config or false and a default path will be used.
+     * @return integer|false The id of the new server on success or false on failure.
+     */
     public static function newServer(string $documentRoot, string $name, string|false $serverRoot=false):int|false{
         $serverNumber = 1;
         while(settings::isset("servers/" . $serverNumber)){
@@ -50,6 +61,14 @@ class apachemgr{
 
         return $serverNumber;
     }
+    /**
+     * Deletes a server from the servers list and optionally remove the server binaries and config files.
+     * This does not check if the server is running as the server can be run in different ways.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @param boolean $deleteRoot Weather to remove the servers binaries and config files too.
+     * @return boolean Indicates success.
+     */
     public static function deleteServer(int $serverNumber, bool $deleteRoot=false):bool{
         $info = settings::read('servers/' . $serverNumber);
         if(!is_array($info) || !isset($info['root'])){
@@ -74,6 +93,12 @@ class apachemgr{
     }
 
     //Server management
+    /**
+     * Starts the servers httpd.exe process.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @return boolean Indicates success.
+     */
     public static function start(int $serverNumber):bool{
         $info = settings::read('servers/' . $serverNumber);
         if(!is_array($info) || !isset($info['root'])){
@@ -118,9 +143,21 @@ class apachemgr{
 
         return true;
     }
+    /**
+     * Gets the process handle from proc_open of a servers httpd.exe process.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @return mixed The process handle on success or false on failure.
+     */
     public static function getServerProc(int $serverNumber):mixed{
         return isset(self::$procs[$serverNumber]) ? self::$procs[$serverNumber] : false;
     }
+    /**
+     * Stops a servers httpd.exe process, the process must have been started in the same instance of php-cli.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @return integer|false The exit code on success or false on failure.
+     */
     public static function stop(int $serverNumber):int|false{
         if(!self::isRunning($serverNumber)){
             mklog(2, 'Server number ' . $serverNumber . ' is not running or was not started by this process');
@@ -164,6 +201,13 @@ class apachemgr{
 
         return $exit;
     }
+    /**
+     * Checks if a servers httpd.exe process is running.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @param boolean $deleteProcIfNotRunning Weather to remove the process handle from the list of process handles if the server is no longer running.
+     * @return boolean Weather the server is running or not, or false on failure.
+     */
     public static function isRunning(int $serverNumber, bool $deleteProcIfNotRunning=true):bool{
         $proc = self::getServerProc($serverNumber);
         if($proc){
@@ -177,6 +221,13 @@ class apachemgr{
     }
 
     //Server settings
+    /**
+     * Sets the "Listen" directive in a servers httpd.conf file.
+     *
+     * @param string|integer $identifier Either the server id (integer) or a string to a custon conf file.
+     * @param string $listen What to set the listen directive to.
+     * @return boolean Indicates success.
+     */
     public static function setServerListen(string|int $identifier, string $listen):bool{
         if(!preg_match('/^[0-9.:]+$/', $listen)){
             return false;
@@ -184,12 +235,13 @@ class apachemgr{
         
         return self::setConfDirective($identifier, "Listen", $listen);
     }
-    public static function setServerRoot(string|int $identifier, string $serverRoot):bool{
-        $serverRoot = str_replace("\\", "/", $serverRoot);
-        $serverRoot = rtrim($serverRoot, "/");
-
-        return self::setConfDirective($identifier, "Define SRVROOT", "\"" . $serverRoot . "\"");
-    }
+    /**
+     * Sets the servers document root, this is done with "Define DOCROOT" in the conf file.
+     *
+     * @param string|integer $identifier Either the id of the server (integer) or a string to a custom conf file.
+     * @param string $docDir What to set the document directory to.
+     * @return boolean Indicates success.
+     */
     public static function setServerDocRoot(string|int $identifier, string $docDir):bool{
         $docDir = str_replace("\\", "/", $docDir);
         $docDir = rtrim($docDir, "/");
@@ -197,12 +249,27 @@ class apachemgr{
 
         return self::setConfDirective($identifier, "Define DOCROOT", "\"" . $docDir . "\"");
     }
+    /**
+     * Sets the "Define PHPROOT" directive, this tells apache where to find php.
+     *
+     * @param string|integer $identifier Either the id of the server (integer) or a string to a custom conf file.
+     * @param string $phpDir The directory for the php installation.
+     * @return boolean Indicates success.
+     */
     public static function setServerPhpRoot(string|int $identifier, string $phpDir):bool{
         $phpDir = str_replace("\\", "/", $phpDir);
         $phpDir = rtrim($phpDir, "/");
 
         return self::setConfDirective($identifier, "Define PHPROOT", "\"" . $phpDir . "\"");
     }
+    /**
+     * Sets a conf file directive to a specific value.
+     *
+     * @param string|integer $identifier Either the id of the server (integer) or a string to a custom conf file.
+     * @param string $directive The name of the directive.
+     * @param string $value The value to set the directive to.
+     * @return boolean Indicates success.
+     */
     public static function setConfDirective(string|int $identifier, string $directive, string $value):bool{
         if(is_int($identifier)){
             $identifier = self::getServerRoot($identifier);
@@ -214,14 +281,12 @@ class apachemgr{
 
         return txtrw::replaceLineBeginingWith($identifier, $directive, $directive . " " . $value, ['#']);
     }
-    public static function setAutostart(int $serverNumber, bool $autostart):bool{
-        if(!settings::isset('servers/' . $serverNumber)){
-            mklog(2,'Failed to find server ' . $serverNumber);
-            return false;
-        }
-
-        return settings::set('servers/' . $serverNumber . '/autostart', $autostart, true);
-    }
+    /**
+     * Reads a conf file and tries to put it into an array, this is only for reading, the original conf cannot be made with the output of this function.
+     *
+     * @param string|integer $identifier Either the id of the server (integer) or a string to a custom conf file.
+     * @return array|false The data on success or false on failure.
+     */
     public static function readConf(string|int $identifier):array|false{
         $return = [];
 
@@ -324,6 +389,12 @@ class apachemgr{
     }
 
     //Server information
+    /**
+     * Gets a servers root directory.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @return string|false The directory on success or false on failure.
+     */
     public static function getServerRoot(int $serverNumber):string|false{
         $info = settings::read('servers/' . $serverNumber);
         if(!is_array($info) || !isset($info['root'])){
@@ -331,6 +402,12 @@ class apachemgr{
         }
         return $info['root'];
     }
+    /**
+     * Gets the port number a server will run on.
+     *
+     * @param integer $serverNumber The id of the server.
+     * @return integer|false The port the server will run on on success or false on failure.
+     */
     public static function getServerPort(int $serverNumber):int|false{
         $root = self::getServerRoot($serverNumber);
         if(!is_string($root)){
@@ -353,6 +430,11 @@ class apachemgr{
             return intval(trim(substr($line, 7)));
         }
     }
+    /**
+     * Lists all the servers.
+     *
+     * @return array|false The info for all servers on success or false on failure.
+     */
     public static function listServers():array|false{
         return settings::read('servers');
     }
@@ -421,7 +503,7 @@ class apachemgr{
             return false;
         }
 
-        if(!self::setServerRoot($serverRoot . '/conf/httpd.conf', $serverRoot)){
+        if(!self::setConfDirective($serverRoot . '/conf/httpd.conf', "Define SRVROOT", "\"" . rtrim(str_replace("\\", "/", $serverRoot), "/") . "\"")){
             mklog(2,'Failed to set server root in config file');
             return false;
         }
